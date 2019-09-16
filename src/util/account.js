@@ -17,11 +17,10 @@
 // @flow
 
 import { NetworkProtocols, NETWORK_LIST, SubstrateNetworkKeys } from '../constants';
+import { v4 } from 'react-native-uuid';
 
-export function accountId({
-  address,
-  networkKey
-}) {
+export function accountId({ address, networkKey }) {
+
   if (typeof address !== 'string' || address.length === 0 || !networkKey || !NETWORK_LIST[networkKey]) {
     throw new Error(`Couldn't create an accountId. Address or networkKey missing, or network key was invalid.`);
   }
@@ -41,13 +40,14 @@ export function empty(address = '', networkKey = SubstrateNetworkKeys.KUSAMA) {
     createdAt: new Date().getTime(),
     derivationPassword: '',
     derivationPath:'',
-    encryptedSeed: null,
     name: '',
     networkKey: networkKey,
     seed: '',
     seedPhrase: '',
     updatedAt: new Date().getTime(),
     validBip39Seed: false,
+    pinKey: v4(),
+    biometricEnabled: false,
   };
 }
 

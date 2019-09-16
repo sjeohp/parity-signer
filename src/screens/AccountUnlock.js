@@ -18,7 +18,7 @@
 
 import PropTypes from 'prop-types';
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { NavigationActions, StackActions } from 'react-navigation';
 import { Subscribe } from 'unstated';
 import colors from '../colors';
@@ -76,10 +76,26 @@ export class AccountUnlock extends React.Component {
           <AccountUnlockView
             {...this.props}
             checkPin={async pin => {
-              return await accounts.unlockAccount(accounts.getSelected(), pin);
+              return await accounts.unlockAccount(accounts.getSelectedKey(), pin);
             }}
-            navigate={() => {
-              if (next === 'AccountDelete') {
+            navigate={async pin => {
+              if (next === 'AccountBiometric') {
+                navigation.goBack();
+                if (accounts.getSelected().biometricEnabled) {
+                    await accounts.disableBiometric(accounts.getSelectedKey());
+                } else {
+                    await accounts.enableBiometric(accounts.getSelectedKey(), pin).catch((error) => {
+                      // error here is likely no fingerprints/biometrics enrolled, so should be displayed to the user 
+                      console.log(error);
+                      Alert.alert('Biometric Error', error.message, [
+                          { 
+                              text: 'Ok',
+                              style: 'default'
+                          }
+                      ]);
+                    });
+                }
+              } else if (next === 'AccountDelete') {
                 navigation.goBack();
                 navigation.state.params.onDelete();
               } else {
@@ -89,7 +105,7 @@ export class AccountUnlock extends React.Component {
                   actions: [
                     NavigationActions.navigate({ routeName: 'AccountList' }),
                     NavigationActions.navigate({ routeName: 'AccountDetails' }),
-                    NavigationActions.navigate({ routeName: next })
+                    NavigationActions.navigate({ routeName: next, params: next === 'AccountBiometric' ? { pin: pin } : {} })
                   ]
                 });
                 this.props.navigation.dispatch(resetAction);
@@ -133,7 +149,7 @@ class AccountUnlockView extends React.PureComponent {
               return;
             }
             if (await checkPin(pin)) {
-              navigate();
+              navigate(pin);
             } else if (pin.length > 5) {
               this.setState({ hasWrongPin: true });
             }

@@ -18,6 +18,7 @@
 
 import React from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { NavigationActions, StackActions } from 'react-navigation';
 import { Subscribe } from 'unstated';
 
 import colors from '../colors';
@@ -26,8 +27,8 @@ import AccountCard from '../components/AccountCard';
 import QrView from '../components/QrView';
 import AccountsStore from '../stores/AccountsStore';
 import TxStore from '../stores/TxStore';
-import { accountId } from '../util/account';
 import PopupMenu from '../components/PopupMenu'
+import { NETWORK_LIST, NetworkProtocols } from '../constants';
 
 export default class AccountDetails extends React.Component {
   static navigationOptions = {
@@ -55,27 +56,27 @@ class AccountDetailsView extends React.Component {
     super(props);
   }
 
-  componentDidMount() {
-    this.subscription = this.props.navigation.addListener('willFocus', t => {
-      this.props.txStore.loadTxsForAccount(this.props.accounts.getSelected());
-    });
-  }
-
   onDelete = () => {
     const accounts = this.props.accounts
     const selected = accounts.getSelected();
+    const selectedKey = accounts.getSelectedKey();
 
     Alert.alert(
       'Delete Account',
-      `Do you really want to delete ${selected.name || selected.address}?
+      `Do you really want to delete ${selected.name || selected.address || 'this account'}?
 This account can only be recovered with its associated recovery phrase.`,
       [
         {
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
-            accounts.deleteAccount(selected);
-            this.props.navigation.navigate('AccountList');
+            accounts.deleteAccount(selectedKey);
+            const resetAction = StackActions.reset({
+              index: 0,
+              key: undefined, // FIXME workaround for now, use SwitchNavigator later: https://github.com/react-navigation/react-navigation/issues/1127#issuecomment-295841343
+              actions: [NavigationActions.navigate({ routeName: 'AccountList' })]
+            });
+            this.props.navigation.dispatch(resetAction);
           }
         },
         {
@@ -86,58 +87,117 @@ This account can only be recovered with its associated recovery phrase.`,
     );
   }
 
-  componentWillUnmount() {
-    this.subscription.remove();
-  }
-
-  onOptionSelect = (value) => {
+  onOptionSelect = async (value) => {
     const navigate = this.props.navigation.navigate
+    const accounts = this.props.accounts;
 
     if (value !== 'AccountEdit') {
-      navigate('AccountUnlock', {
-        next: value,
-        onDelete: this.onDelete
-      });
+      if (accounts.getSelected().biometricEnabled) { 
+          try {
+              await accounts.unlockAccountWithBiometric(accounts.getSelectedKey());
+              if (value === 'AccountDelete') {
+                  this.onDelete();
+              } else if (value === 'AccountBiometric') {
+                  await accounts.disableBiometric(accounts.getSelectedKey());
+              } else {
+                  navigate(value);
+              }
+          } catch (e) {
+              console.log(e);
+              Alert.alert('Biometric Error', e.message, [
+                  { 
+                      text: 'Ok',
+                      style: 'default',
+                      onPress: () => {
+                          navigate('AccountUnlock', {
+                            next: value,
+                            onDelete: this.onDelete
+                          });
+                      },
+                      onDismiss: () => {
+                          navigate('AccountUnlock', {
+                            next: value,
+                            onDelete: this.onDelete
+                          });
+                      }
+                  }
+              ]);
+          }
+      } else {
+          navigate('AccountUnlock', {
+            next: value,
+            onDelete: this.onDelete
+          });
+      }
     } else {
       navigate(value);
     }
   }
 
+  renderWarningUnknownAccount = function () {
+    return (
+      <View style={styles.warningView}>
+        <Text style={{...styles.title, ...styles.warningTitle}}>Warning</Text>
+        <Text>
+          This account wasn't retrieved successfully. This could be because its network isn't supported,
+          or you upgraded Parity Signer without wiping your device and this account couldn't be migrated.
+          {'\n'}{'\n'}
+          To be able to use this account you need to:{'\n'}
+          - write down its recovery phrase{'\n'}
+          - delete it{'\n'}
+          - recover it{'\n'}
+        </Text>
+      </View>
+    )
+  }
+
   render() {
-    const account = this.props.accounts.getSelected();
+    const { accounts } = this.props
+    const account = accounts.getSelected();
+    const selectedKey = accounts.getSelectedKey();
 
     if (!account) {
       return null;
     }
 
+    const protocol = account.networkKey && NETWORK_LIST[account.networkKey] && NETWORK_LIST[account.networkKey].protocol || NetworkProtocols.UNKNOWN ;
+
     return (
-      <ScrollView
-        contentContainerStyle={styles.bodyContent}
-        style={styles.body}
-      >
-        <View style={styles.header}>
-          <Text style={styles.title}>ACCOUNT</Text>
-          <View style={styles.menuView}>
-            <PopupMenu
-              onSelect={this.onOptionSelect}
-              menuTriggerIconName={"more-vert"}
-              menuItems={[
-                { value: 'AccountEdit', text: 'Edit' },
-                { value: 'AccountPin', text: 'Change Pin' },
-                { value: 'AccountBackup', text: 'View Recovery Phrase' },
-                { value: 'AccountDelete', text: 'Delete', textStyle: styles.deleteText }]}
-            />
-          </View>
-        </View>
-        <AccountCard
-          address={account.address}
-          networkKey={account.networkKey}
-          title={account.name}
-        />
-        <View style={styles.qr}>
-          <QrView data={accountId(account)} />
-        </View>
-      </ScrollView>
+      <Subscribe to={[AccountsStore]}>
+        {(accounts) => (
+          <ScrollView
+            contentContainerStyle={styles.bodyContent}
+            style={styles.body}>
+            <View style={styles.header}>
+              <Text style={styles.title}>ACCOUNT</Text>
+              <View style={styles.menuView}>
+                <PopupMenu
+                  onSelect={this.onOptionSelect}
+                  menuTriggerIconName={"more-vert"}
+                  menuItems={[
+                    { value: 'AccountEdit', text: 'Edit' },
+                    { value: 'AccountPin', text: 'Change Pin' },
+                    { value: 'AccountBiometric', text: accounts.getSelected().biometricEnabled ? "Disable Biometric" : "Enable Biometric" },
+                    { value: 'AccountBackup', text: 'View Recovery Phrase' },
+                    { value: 'AccountDelete', text: 'Delete', textStyle: styles.deleteText }]}
+                />
+              </View>
+            </View>
+          <AccountCard
+            address={account.address}
+            networkKey={account.networkKey}
+            title={account.name}
+          />
+          <View style={styles.qr}>
+          {
+            protocol !== NetworkProtocols.UNKNOWN
+              ? <QrView data={selectedKey} />
+              : this.renderWarningUnknownAccount()
+           }
+           </View>
+         </ScrollView>
+       )}
+       </Subscribe>
     );
   }
 }
@@ -157,7 +217,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card_bg
   },
   deleteText: {
-    color: 'red'
+    color: colors.bg_alert
   },
   header: {
     flexDirection: 'row',
@@ -169,12 +229,19 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'flex-end',
   },
-
   title: {
     color: colors.bg_text_sec,
     fontSize: 18,
     fontFamily: fonts.bold,
     flexDirection: 'column',
     justifyContent: 'center',
+  },
+  warningTitle: {
+    color: colors.bg_alert,
+    fontSize: 20,
+    marginBottom: 10
+  },
+  warningView: {
+    padding: 20
   }
 });
