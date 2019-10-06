@@ -21,7 +21,7 @@
 #import <Foundation/Foundation.h>
 #import <React/RCTUtils.h>
 
-#define encryptAlgorithm        kSecKeyAlgorithmECIESEncryptionStandardX963SHA512AESGCM
+#define encryptAlgorithm        kSecKeyAlgorithmECIESEncryptionStandardX963SHA256AESGCM
 
 #if TARGET_OS_SIMULATOR
 static BOOL isSimulator = YES;
