@@ -29,6 +29,7 @@ import AccountsStore from '../stores/AccountsStore';
 import TxStore from '../stores/TxStore';
 import PopupMenu from '../components/PopupMenu'
 import { NETWORK_LIST, NetworkProtocols } from '../constants';
+import Button from "../components/Button";
 
 export default class AccountDetails extends React.Component {
   static navigationOptions = {
@@ -118,7 +119,7 @@ This account can only be recovered with its associated recovery phrase.`,
   }
 
   render() {
-    const { accounts } = this.props
+    const { accounts, navigation } = this.props
     const account = accounts.getSelected();
     const selectedKey = accounts.getSelectedKey();
 
@@ -159,6 +160,12 @@ This account can only be recovered with its associated recovery phrase.`,
               : this.renderWarningUnknownAccount()
           }
         </View>
+
+        <Button
+          buttonStyles={styles.deriveButton}
+          title="Derive Key Pairs"
+          onPress={() => navigation.navigate('AccountNew')}
+        />
       </ScrollView>
     );
   }
@@ -205,5 +212,9 @@ const styles = StyleSheet.create({
   },
   warningView: {
     padding: 20
+  },
+  deriveButton: {
+    height: 60,
+    marginTop: 20
   }
 });
